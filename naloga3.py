@@ -96,7 +96,7 @@ def izracunaj_centre(slika, izbira="nakljucna", dimenzija_centra=3, T=0.3, k=3):
         raise ValueError("Invalid 'izbira': must be 'nakljucna' or 'ročno'")
 
 
-def kmeans(slika, k=3, iteracije=10, dimenzija_centra=3):
+def kmeans(slika, k=3, iteracije=10, dimenzija_centra=3, izbira="nakljucna", T=0.3):
     """
     Segments the input image using the K-means clustering algorithm.
     Each pixel is treated as a point in 3D (RGB) or 5D (RGB + XY) feature space.
@@ -104,8 +104,6 @@ def kmeans(slika, k=3, iteracije=10, dimenzija_centra=3):
     """
 
     h, w, _ = slika.shape
-    T = 0.01  # Threshold used only for initial center selection
-    izbira = "ročno"  # Change to "nakljucna" to auto-select centers
 
     # Build the full feature space for all pixels
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
@@ -211,7 +209,7 @@ def chunk_indices(n, num_chunks):
     return [list(range(i, min(i + chunk_size, n))) for i in range(0, n, chunk_size)]
 
 
-def meanshift(slika, velikost_okna, dimenzija):
+def meanshift(slika, velikost_okna, dimenzija, max_iter=10, min_cd=0.05):
     """
     Perform Mean-Shift segmentation on an image.
 
@@ -220,8 +218,8 @@ def meanshift(slika, velikost_okna, dimenzija):
     a Gaussian kernel. The final image is formed by merging nearby converged points.
     """
     h, w, _ = slika.shape
-    max_iter = 10  # Maximum number of shifts per point
-    min_cd = 0.05  # Minimum distance between centers (in normalized space)
+    # max_iter = 10  # Maximum number of shifts per point
+    # min_cd = 0.05  # Minimum distance between centers (in normalized space)
 
     # Build the feature space: either only color or color + position
     if dimenzija == 3:
@@ -288,12 +286,106 @@ def meanshift(slika, velikost_okna, dimenzija):
     return rezultat.reshape((h, w, 3))
 
 
+def run_report_generation(slika):
+    os.makedirs("report", exist_ok=True)
+
+    # --- K-MEANS TESTS ---
+    kmeans_tests = [
+        {
+            "name": "kmeans_rgb_random_T03",
+            "args": {
+                "k": 6,
+                "iteracije": 10,
+                "dimenzija_centra": 3,
+                "izbira": "nakljucna",
+                "T": 0.3,
+            },
+        },
+        {
+            "name": "kmeans_rgb_pos_random_T03",
+            "args": {
+                "k": 6,
+                "iteracije": 10,
+                "dimenzija_centra": 5,
+                "izbira": "nakljucna",
+                "T": 0.3,
+            },
+        },
+        {
+            "name": "kmeans_rgb_pos_random_T01",
+            "args": {
+                "k": 6,
+                "iteracije": 10,
+                "dimenzija_centra": 5,
+                "izbira": "nakljucna",
+                "T": 0.01,
+            },
+        },
+        {
+            "name": "kmeans_rgb_random_T06",
+            "args": {
+                "k": 6,
+                "iteracije": 10,
+                "dimenzija_centra": 3,
+                "izbira": "nakljucna",
+                "T": 0.6,
+            },
+        },
+    ]
+
+    for test in kmeans_tests:
+        print(f"[INFO] Running {test['name']}...")
+        img, _ = kmeans(slika, **test["args"])
+        cv.imwrite(f"report/{test['name']}.png", img)
+    """
+    # --- MEAN-SHIFT TESTS ---
+    meanshift_tests = [
+        {"name": "meanshift_rgb_01", "args": {"velikost_okna": 0.1, "dimenzija": 3}},
+        {
+            "name": "meanshift_rgb_pos_01",
+            "args": {"velikost_okna": 0.1, "dimenzija": 5},
+        },
+        {
+            "name": "meanshift_rgb_pos_005",
+            "args": {"velikost_okna": 0.05, "dimenzija": 5},
+        },
+        {
+            "name": "meanshift_rgb_pos_02",
+            "args": {"velikost_okna": 0.2, "dimenzija": 5},
+        },
+        {
+            "name": "meanshift_rgb_pos_01_min01",
+            "args": {"velikost_okna": 0.1, "dimenzija": 5, "min_cd": 0.01},
+        },
+    ]
+
+    for test in meanshift_tests:
+        print(f"[INFO] Running {test['name']}... (downscaled)")
+        downscale_factor = 0.25
+        new_size = (
+            int(slika.shape[1] * downscale_factor),
+            int(slika.shape[0] * downscale_factor),
+        )
+        small_img = cv.resize(slika, new_size, interpolation=cv.INTER_AREA)
+
+        result_small = meanshift(small_img, **test["args"])
+        result = cv.resize(
+            result_small,
+            (slika.shape[1], slika.shape[0]),
+            interpolation=cv.INTER_NEAREST,
+        )
+
+        cv.imwrite(f"report/{test['name']}.png", result)
+    """
+    print("[INFO] All report images saved in 'report/' folder.")
+
+
 if __name__ == "__main__":
     import multiprocessing
 
     multiprocessing.set_start_method("spawn")  # optional, but explicit
 
-    if len(sys.argv) < 2 or sys.argv[1] not in ["km", "ms", "mss", "kme"]:
+    if len(sys.argv) < 2 or sys.argv[1] not in ["km", "ms", "mss", "kme", "report"]:
         print("Usage: python naloga3.py [km|ms]")
         sys.exit(1)
 
@@ -350,3 +442,5 @@ if __name__ == "__main__":
 
         print("Saved: kmeans_test_input.png")
         print("Saved: kmeans_test_result_visual.png")
+    elif sys.argv[1] == "report":
+        run_report_generation(slika)
